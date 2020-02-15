@@ -6,8 +6,9 @@ use std::str::FromStr;
 use std::io::{BufRead};
 use std::io::BufReader;
 
-mod error;
-use error::*;
+pub mod error;
+use error::FtpError;
+use error::FtpErrorType::*;
 
 // TODO: Add an enum containing FTP status codes for use in response expectations
 
@@ -18,9 +19,9 @@ pub struct FtpResponse {
 }
 
 impl FromStr for FtpResponse {
-	type Err = error::InvalidResponseError;
+	type Err = FtpError;
 	
-	fn from_str(s: &str) -> Result<FtpResponse, error::InvalidResponseError> {
+	fn from_str(s: &str) -> Result<FtpResponse, FtpError> {
 		// Make sure the recieved content is long enough to contain a status code
 		if s.len() >= 3 {
 			// Grab the first 3 characters of the string
@@ -29,10 +30,10 @@ impl FromStr for FtpResponse {
 			// Try to parse the first 3 characters as a usize as FTP status codes are 3 digits
 			match status_code.parse::<usize>() {
 				Ok(status) => Ok(FtpResponse {status: status, content: s.to_string()}),
-				_ => Err(error::InvalidResponseError)
+				_ => Err(FtpError::new(InvalidResponseError))
 			}
 		} else {
-			Err(error::InvalidResponseError)
+			Err(FtpError::new(InvalidResponseError))
 		}
 	}
 }
@@ -55,7 +56,7 @@ impl FtpConnection {
 	///
 	/// let ftp_connection = FtpConnection::connect("4.31.198.44:21".parse().unwrap());
 	/// ```
-	pub fn connect(connection_addr: SocketAddrV4) -> Result<FtpConnection, error::FtpErrors> {
+	pub fn connect(connection_addr: SocketAddrV4) -> Result<FtpConnection, FtpError> {
 		match TcpStream::connect(connection_addr) {
 			Ok(stream) => {
 				let mut ftp_conn = FtpConnection {
@@ -66,19 +67,22 @@ impl FtpConnection {
 
 				match res {
 					Ok(ftp_response) if ftp_response.status == 220 => {Ok(ftp_conn)},
-					Ok(_) => Err(FtpErrors::InvalidResponseError(InvalidResponseError)),
-					Err(_) => Err(FtpErrors::InvalidResponseError(InvalidResponseError))
+					Ok(_) => Err(FtpError::new(InvalidResponseError)),
+					Err(_) => Err(FtpError::new(InvalidResponseError))
 				}	
 			},
-			Err(_) => Err(FtpErrors::FtpConnectionError(FtpConnectionError))
+			Err(_) => Err(FtpError::new(FtpConnectionError))
 		}
 	}
 
-	fn wait_for_response(&mut self) -> Result<FtpResponse, error::InvalidResponseError> {
+	fn wait_for_response(&mut self) -> Result<FtpResponse, FtpError> {
 		let mut response = String::from("");
-		self.reader.read_line(&mut response).unwrap();
-
-		FtpResponse::from_str(response.as_str())
+		match self.reader.read_line(&mut response) {
+			Ok(_) => {
+				FtpResponse::from_str(&response)
+			},
+			Err(_) => Err(FtpError::new(FtpConnectionError))
+		}
 	}
 }
 

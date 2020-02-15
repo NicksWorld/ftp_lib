@@ -2,37 +2,42 @@ use std::error;
 use std::fmt;
 
 #[derive(Debug, Clone)]
-pub enum FtpErrors {
-	InvalidResponseError(InvalidResponseError),
-	FtpConnectionError(FtpConnectionError)
+pub enum FtpErrorType {
+	/// Invalid response recieved from the FTP server
+	InvalidResponseError,
+	/// Error connecting to the FTP server
+	FtpConnectionError
+}
+
+impl FtpErrorType {
+	pub fn as_str(&self) -> &'static str {
+		match *self {
+			FtpErrorType::InvalidResponseError => "Invalid response recieved",
+			FtpErrorType::FtpConnectionError => "Error connecting to FTP server"
+		}
+	}
 }
 
 #[derive(Debug, Clone)]
-pub struct InvalidResponseError;
+pub struct FtpError {
+	err_type: FtpErrorType
+}
 
-impl fmt::Display for InvalidResponseError {
+impl FtpError {
+	pub fn new(kind: FtpErrorType) -> FtpError {
+		FtpError {
+			err_type: kind
+		}
+	}
+}
+
+impl fmt::Display for FtpError {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-		write!(f, "Invalid response was recieved from the FTP server.")
+		write!(f, "{}", &self.err_type.as_str())
 	}
 }
 
-impl error::Error for InvalidResponseError {
-	fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-		None
-	}
-}
-
-
-#[derive(Debug, Clone)]
-pub struct FtpConnectionError;
-
-impl fmt::Display for FtpConnectionError {
-	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-		write!(f, "There was an error connecting to the FTP server.")
-	}
-}
-
-impl error::Error for FtpConnectionError {
+impl error::Error for FtpError {
 	fn source(&self) -> Option<&(dyn error::Error + 'static)> {
 		None
 	}
