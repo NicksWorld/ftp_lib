@@ -26,6 +26,7 @@ impl FtpErrorType {
     }
 }
 
+/// The main struct holding the errors related to FTP
 #[derive(Debug, Clone)]
 pub struct FtpError {
     err_type: FtpErrorType,

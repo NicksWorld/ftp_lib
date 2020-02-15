@@ -124,7 +124,7 @@ impl FtpConnection {
     /// use std::net::SocketAddrV4;
     /// use ftp_lib::FtpConnection;
     ///
-    /// let ftp_connection = FtpConnection::connect("4.31.198.44:21".parse().unwrap());
+    /// let ftp_connection = FtpConnection::connect("4.31.198.44:21".parse().unwrap()).unwrap();
     /// ```
     pub fn connect(connection_addr: SocketAddrV4) -> Result<FtpConnection, FtpError> {
         match TcpStream::connect(connection_addr) {
@@ -145,6 +145,18 @@ impl FtpConnection {
         }
     }
 
+    /// Authenticates the client with the FTP server.
+    ///
+    /// # Examples
+    /// Logs into the FTP server at 4.31.198.44
+    /// ```
+    /// use std::net::SocketAddrV4;
+    /// use ftp_lib::FtpConnection;
+    ///
+    /// let mut ftp_connection = FtpConnection::connect("4.31.198.44:21".parse().unwrap()).unwrap();
+    ///
+    /// ftp_connection.login("anonymous".to_string(), Some("fake@email.service".to_string())).unwrap();
+    /// ```
     pub fn login(&mut self, username: String, password: Option<String>) -> Result<(), FtpError> {
         self.write_command(format!("USER {}\r\n", username))?;
         let username_res = self.wait_for_response()?;
@@ -161,7 +173,20 @@ impl FtpConnection {
             _ => Err(FtpError::new(InvalidResponseError)),
         }
     }
-
+    /// Lists all files in the current working directory.
+    ///
+    /// # Examples
+    /// Lists all files in the default working directory of the server at 4.31.198.41 (ftp.ietf.org).
+    /// ```
+    /// use std::net::SocketAddrV4;
+    /// use ftp_lib::FtpConnection;
+    ///
+    /// let mut ftp_connection = FtpConnection::connect("4.31.198.44:21".parse().unwrap()).unwrap();
+    /// ftp_connection.login("anonymous".to_string(), Some("fake@email.service".to_string())).unwrap();
+    ///
+    /// let file_list = ftp_connection.list().unwrap();
+    /// println!("{}", file_list);
+    /// ```
     pub fn list(&mut self) -> Result<String, FtpError> {
         let datastream_addr = self.pasv()?;
         let mut datastream = TcpStream::connect(datastream_addr).unwrap();
@@ -174,6 +199,9 @@ impl FtpConnection {
         Ok(String::from_utf8_lossy(&datavec).to_string())
     }
 
+    /// Puts the FTP server into passive mode.
+    ///
+    /// Passive mode makes the next request using a datastream to send data through the specified port.
     fn pasv(&mut self) -> Result<SocketAddrV4, FtpError> {
         self.write_command("PASV\r\n".to_string())?;
         let pasv = self.wait_for_response()?;
@@ -183,6 +211,9 @@ impl FtpConnection {
         }
     }
 
+    /// Writes a telnet command to the FTP server.
+    ///
+    /// The \r\n is still required at the end of the string.
     fn write_command(&mut self, command: String) -> Result<(), FtpError> {
         match self.reader.get_mut().write_all(command.as_bytes()) {
             Ok(_) => Ok(()),
@@ -190,6 +221,9 @@ impl FtpConnection {
         }
     }
 
+    /// Waits until a telnet response is recieved from the FTP server.
+    ///
+    /// Ex: "220 FTP server ready.\r\n"
     fn wait_for_response(&mut self) -> Result<FtpResponse, FtpError> {
         let mut response = String::from("");
         match self.reader.read_line(&mut response) {
