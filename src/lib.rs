@@ -189,25 +189,42 @@ impl FtpConnection {
     /// ```
     pub fn list(&mut self) -> Result<String, FtpError> {
         let datastream_addr = self.pasv()?;
-        let mut datastream = TcpStream::connect(datastream_addr).unwrap();
 
         self.write_command("LIST\r\n".to_string())?;
+
+        let datavec = self.connect_datastream(datastream_addr)?;
 
         match self.wait_for_response() {
             Ok(res) if res.status == 150 => (),
             _ => return Err(InvalidResponseError), // FIXME: Probably not the case, needs fix
         }
 
-        let mut datavec = vec![];
-        datastream.read_to_end(&mut datavec).unwrap();
-
-        datastream.shutdown(std::net::Shutdown::Both).unwrap();
         match self.wait_for_response() {
             Ok(res) if res.status == 226 => (),
             _ => return Err(InvalidResponseError), // FIXME: probably incorrect
         }
 
         Ok(String::from_utf8_lossy(&datavec).to_string())
+    }
+
+    fn connect_datastream(&self, datastream_addr: SocketAddrV4) -> Result<Vec<u8>, FtpError> {
+        match TcpStream::connect(datastream_addr) {
+            Ok(mut datastream) => {
+                let mut datavec = vec![];
+                match datastream.read_to_end(&mut datavec) {
+                    Ok(_) => (),
+                    Err(_) => return Err(DatastreamConnectionError),
+                }
+
+                match datastream.shutdown(std::net::Shutdown::Both) {
+                    Ok(_) => (),
+                    Err(_) => return Err(DatastreamConnectionError),
+                }
+
+                Ok(datavec)
+            }
+            Err(_) => Err(DatastreamConnectionError),
+        }
     }
 
     /// Puts the FTP server into passive mode.
