@@ -11,7 +11,7 @@ use std::io::Write;
 
 pub mod error;
 use error::FtpError;
-use error::FtpErrorType::*;
+use error::FtpError::*;
 
 /// Stores the status code recieved from the FTP server along with the whole message
 ///
@@ -26,7 +26,7 @@ pub struct FtpResponse {
 impl FtpResponse {
     pub fn parse_pasv_addr(&self) -> Result<SocketAddrV4, FtpError> {
         if self.status != 227 {
-            return Err(FtpError::new(InvalidTypeError));
+            return Err(InvalidTypeError);
         }
 
         let pasv_raw = &self.content.as_str();
@@ -35,14 +35,14 @@ impl FtpResponse {
 
         let pasv_unparsed: Vec<&str> = pasv_addr_section.split(",").collect();
         if pasv_unparsed.len() != 6 {
-            return Err(FtpError::new(InvalidResponseError));
+            return Err(InvalidResponseError);
         }
 
         let mut octets = vec![];
         for number in pasv_unparsed[0..4].iter() {
             match number.parse::<u8>() {
                 Ok(v) => octets.push(v),
-                Err(_) => return Err(FtpError::new(InvalidResponseError)),
+                Err(_) => return Err(InvalidResponseError),
             }
         }
 
@@ -50,7 +50,7 @@ impl FtpResponse {
         for number in pasv_unparsed[4..].iter() {
             match number.parse::<u16>() {
                 Ok(v) => port_data.push(v),
-                Err(_) => return Err(FtpError::new(InvalidResponseError)),
+                Err(_) => return Err(InvalidResponseError),
             }
         }
 
@@ -92,10 +92,10 @@ impl FromStr for FtpResponse {
                     status,
                     content: s.to_string(),
                 }),
-                _ => Err(FtpError::new(InvalidResponseError)),
+                _ => Err(InvalidResponseError),
             }
         } else {
-            Err(FtpError::new(InvalidResponseError))
+            Err(InvalidResponseError)
         }
     }
 }
@@ -137,11 +137,11 @@ impl FtpConnection {
 
                 match res {
                     Ok(ftp_response) if ftp_response.status == 220 => Ok(ftp_conn),
-                    Ok(_) => Err(FtpError::new(InvalidResponseError)),
-                    Err(_) => Err(FtpError::new(InvalidResponseError)),
+                    Ok(_) => Err(InvalidResponseError),
+                    Err(_) => Err(InvalidResponseError),
                 }
             }
-            Err(_) => Err(FtpError::new(FtpConnectionError)),
+            Err(_) => Err(ConnectionError),
         }
     }
 
@@ -166,11 +166,11 @@ impl FtpConnection {
                 let password_res = self.wait_for_response()?;
                 match password_res.status {
                     230 => Ok(()),
-                    530 => Err(FtpError::new(InvalidCredentialsError)),
-                    _ => Err(FtpError::new(InvalidResponseError)),
+                    530 => Err(InvalidCredentialsError),
+                    _ => Err(InvalidResponseError),
                 }
             }
-            _ => Err(FtpError::new(InvalidResponseError)),
+            _ => Err(InvalidResponseError),
         }
     }
     /// Lists all files in the current working directory.
@@ -193,8 +193,19 @@ impl FtpConnection {
 
         self.write_command("LIST\r\n".to_string())?;
 
+        match self.wait_for_response() {
+            Ok(res) if res.status == 150 => (),
+            _ => return Err(InvalidResponseError), // FIXME: Probably not the case, needs fix
+        }
+
         let mut datavec = vec![];
         datastream.read_to_end(&mut datavec).unwrap();
+
+        datastream.shutdown(std::net::Shutdown::Both).unwrap();
+        match self.wait_for_response() {
+            Ok(res) if res.status == 226 => (),
+            _ => return Err(InvalidResponseError), // FIXME: probably incorrect
+        }
 
         Ok(String::from_utf8_lossy(&datavec).to_string())
     }
@@ -207,7 +218,7 @@ impl FtpConnection {
         let pasv = self.wait_for_response()?;
         match pasv.status {
             227 => pasv.parse_pasv_addr(),
-            _ => Err(FtpError::new(InvalidResponseError)),
+            _ => Err(InvalidResponseError),
         }
     }
 
@@ -217,7 +228,7 @@ impl FtpConnection {
     fn write_command(&mut self, command: String) -> Result<(), FtpError> {
         match self.reader.get_mut().write_all(command.as_bytes()) {
             Ok(_) => Ok(()),
-            Err(_) => Err(FtpError::new(FtpConnectionError)),
+            Err(_) => Err(ConnectionError),
         }
     }
 
@@ -228,7 +239,7 @@ impl FtpConnection {
         let mut response = String::from("");
         match self.reader.read_line(&mut response) {
             Ok(_) => FtpResponse::from_str(&response),
-            Err(_) => Err(FtpError::new(FtpConnectionError)),
+            Err(_) => Err(ConnectionError),
         }
     }
 }
