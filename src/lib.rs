@@ -31,9 +31,9 @@ impl FtpResponse {
 
         let pasv_raw = &self.content.as_str();
         let pasv_addr_section =
-            &pasv_raw[pasv_raw.find("(").unwrap_or(0) + 1..pasv_raw.find(")").unwrap_or(0)];
+            &pasv_raw[pasv_raw.find('(').unwrap_or(0) + 1..pasv_raw.find(')').unwrap_or(0)];
 
-        let pasv_unparsed: Vec<&str> = pasv_addr_section.split(",").collect();
+        let pasv_unparsed: Vec<&str> = pasv_addr_section.split(',').collect();
         if pasv_unparsed.len() != 6 {
             return Err(InvalidResponseError);
         }
@@ -100,6 +100,110 @@ impl FromStr for FtpResponse {
     }
 }
 
+pub enum Ftp {
+    /// Command okay.
+    CommandOkay = 200,
+    /// Syntax error, command unrecognized.
+    ///
+    /// This may include errors such as command line to long.
+    SyntaxError = 500,
+    /// Syntax error in parameters or arguments.
+    SyntaxErrorArguments = 501,
+    /// Command not implemented, superfluous at this site.
+    CommandNotImplementedUnnecesary = 202,
+    /// Command not implemented.
+    CommandNotImplemented = 502,
+    /// Bad sequence of commands.
+    BadCommandSequence = 503,
+    /// Command not implemented for that parameter.
+    CommandNotImplementedParameter = 504,
+    /// Restart marker reply.
+    /// In this case, the text is exact and not left to the
+    /// particular implementation; it must read:
+    ///     MARK yyyy = mmmm
+    /// Wthere yyyy is User-process data stream market, and mmmm
+    /// server's equivelent market (note the space between markers and "=")
+    RestartMarkerReply = 110,
+    /// System status, or system help reply.
+    SystemStatus = 211,
+    /// Directory status.
+    DirectoryStatus = 212,
+    /// File status.
+    FileStatus = 213,
+    /// Help message.
+    /// On how to use the server or the meaning of a particular
+    /// non-standard command. This reply is useful only to the
+    /// human user.
+    HelpMessage = 214,
+    /// NAME system type.
+    /// Where NAME is an official system name from the list in the
+    /// Assigned Numbers document.
+    SystemType = 215,
+    /// Service ready in nnn minutes.
+    ReadyIn = 120,
+    /// Servuce ready for new user.
+    ServiceReady = 220,
+    /// Service closing control connection.
+    /// Logged out if approperiate.
+    ServerClosingControl = 221,
+    /// Service not available, closing control connection.
+    /// This may be a reply to any command if the service knows it
+    /// must shut down.
+    ServiceNotAvailable = 421,
+    /// Data connection already open; transfer starting.
+    DataTransferStarting = 125,
+    /// Data connection open; no transfer in progress.
+    DataNotTransfering = 225,
+    /// Can't open data connection.
+    DataCannotConnect = 425,
+    /// Closing data connection.
+    /// Requested file action successful (for example, file
+    /// transfer or file abort).
+    DataClosing = 226,
+    /// Connection closed; transfer aborted.
+    DataClosedAborting = 426,
+    /// Entering Passive Mode (h1,h2,h3,h4,p1,p2).
+    EnteringPassive = 227,
+    /// User logged in, proceed.
+    LoggedIn = 230,
+    /// Not logged in.
+    NotLoggedIn = 530,
+    /// User name okay, need password.
+    PasswordNeeded = 331,
+    /// Need account for login.
+    AccountRequiredLogin = 332,
+    /// Need account for storing files.
+    AccountRequiredStoring = 532,
+    /// File status okay; about to open the data connection.
+    FileOpeningData = 150,
+    /// Requested file action okay, completed.
+    FileActionComplete = 250,
+    /// "PATHNAME" created.
+    DirectoryCreated = 257,
+    /// Requested file action pending further information.
+    FileNeedInformation = 350,
+    /// File action not taken.
+    /// File unavailable (e.g., file busy)
+    FileActionNotTaken = 450,
+    /// Requested action not taken.
+    /// File unavailable (e.g., file not found, no access).
+    ActionNotTaken = 550,
+    /// Requested action aborted. Local error in processing.
+    ActionAbortedProccessing = 451,
+    /// Requested action aborted. Page type unknown.
+    ActionAbortedUnknownPage = 551,
+    /// Requested action not taken.
+    /// Insufficient storage space in system.
+    InsufficientStorage = 452,
+    /// Requested file action aborted.
+    /// Exceeded storage allocation (for current directory or
+    /// dataset).
+    InsufficientAllocatedStorage = 552,
+    /// Requsted action not taken.
+    /// File name not allowed.
+    FileNameInvalid = 553,
+}
+
 /// Main structure for handling the connection to a FTP server.
 ///
 /// # Examples
@@ -162,7 +266,10 @@ impl FtpConnection {
         let username_res = self.wait_for_response()?;
         match username_res.status {
             331 => {
-                self.write_command(format!("PASS {}\r\n", password.unwrap_or("".to_string())))?;
+                self.write_command(format!(
+                    "PASS {}\r\n",
+                    password.unwrap_or_else(|| "".to_string())
+                ))?;
                 let password_res = self.wait_for_response()?;
                 match password_res.status {
                     230 => Ok(()),
@@ -170,6 +277,8 @@ impl FtpConnection {
                     _ => Err(InvalidResponseError),
                 }
             }
+            // 332 Account Required
+            332 => {}
             _ => Err(InvalidResponseError),
         }
     }
@@ -207,6 +316,9 @@ impl FtpConnection {
         Ok(String::from_utf8_lossy(&datavec).to_string())
     }
 
+    /// Connects to a passive datastream
+    ///
+    /// Passive mode opens a port on the host for the client to connect to.
     fn connect_datastream(&self, datastream_addr: SocketAddrV4) -> Result<Vec<u8>, FtpError> {
         match TcpStream::connect(datastream_addr) {
             Ok(mut datastream) => {
