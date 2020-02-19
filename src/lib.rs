@@ -81,10 +81,16 @@ impl FromStr for FtpResponse {
     /// // => FtpResponse {status: 220, content: "220 FTP server ready\r\n"}
     /// ```
     fn from_str(s: &str) -> Result<FtpResponse, FtpError> {
+        println!("{}", s);
+
         // Make sure the recieved content is long enough to contain a status code
         if s.len() >= 3 {
             // Grab the first 3 characters of the string
             let status_code = &s[0..3];
+
+            if format!("{} ", &status_code) != &s[0..4] {
+                return Err(InvalidResponseError);
+            }
 
             // Try to parse the first 3 characters as a usize as FTP status codes are 3 digits
             match status_code.parse::<usize>() {
@@ -261,6 +267,8 @@ impl FtpConnection {
     ///
     /// ftp_connection.login("anonymous".to_string(), Some("fake@email.service".to_string())).unwrap();
     /// ```
+
+    // FIXME: Support ACCT
     pub fn login(&mut self, username: String, password: Option<String>) -> Result<(), FtpError> {
         self.write_command(format!("USER {}\r\n", username))?;
         let username_res = self.wait_for_response()?;
@@ -277,11 +285,21 @@ impl FtpConnection {
                     _ => Err(InvalidResponseError),
                 }
             }
-            // 332 Account Required
-            332 => {}
             _ => Err(InvalidResponseError),
         }
     }
+
+    /// Changes the working directory
+    pub fn change_working_directory(&mut self, path: &str) -> Result<(), FtpError> {
+        self.write_command(format!("CWD {}\r\n", path))?;
+        let cd_result = self.wait_for_response()?;
+
+        match cd_result.status {
+            250 => Ok(()),
+            _ => Err(InvalidResponseError), // FIXME: Add other possible responses.
+        }
+    }
+
     /// Lists all files in the current working directory.
     ///
     /// # Examples
@@ -367,26 +385,54 @@ impl FtpConnection {
     fn wait_for_response(&mut self) -> Result<FtpResponse, FtpError> {
         let mut response = String::from("");
         match self.reader.read_line(&mut response) {
-            Ok(_) => FtpResponse::from_str(&response),
+            Ok(_) => {
+                match FtpResponse::from_str(&response) {
+                    Ok(v) => Ok(v),
+                    Err(_) => {
+                        // Process multiline reply
+                        println!("response {}", response);
+                        let expected_end = format!("{} ", &response[0..3]);
+                        println!(" ---- {} ----", &expected_end);
+                        while response.len() < 5 || response[0..4] != expected_end {
+                            response.clear();
+                            match self.reader.read_line(&mut response) {
+                                Ok(_) => (),
+                                Err(_) => return Err(ConnectionError),
+                            }
+                            println!("{} : {}", &expected_end, &response);
+                        }
+                        println!("... {}", &response);
+                        FtpResponse::from_str(&response)
+                    }
+                }
+            }
             Err(_) => Err(ConnectionError),
         }
     }
 }
 
 #[test]
-fn test_connect() {
+fn test_connect() -> Result<(), FtpError> {
     use std::net::Ipv4Addr;
     use std::net::SocketAddrV4;
 
-    let mut ftp_conn =
-        FtpConnection::connect(SocketAddrV4::new(Ipv4Addr::new(4, 31, 198, 44), 21)).unwrap();
+    let mut ftp_conn = FtpConnection::connect(SocketAddrV4::new(Ipv4Addr::new(4, 31, 198, 44), 21))
+        .expect("Ftp connection failed");
 
     ftp_conn
         .login(
             "anonymous".to_string(),
             Some("fake@email.service".to_string()),
         )
-        .unwrap();
-    let working_dir = ftp_conn.list().unwrap();
-    println!("{}", working_dir);
+        .expect("Login failed");
+    let files = ftp_conn.list().expect("File listing failed.");
+    println!("{}", files);
+
+    ftp_conn
+        .change_working_directory("/rfc")
+        .expect("CWD failed");
+
+    let files = ftp_conn.list().expect("File listing failed.");
+    println!("{}", files);
+    Ok(())
 }
