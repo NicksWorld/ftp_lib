@@ -81,8 +81,6 @@ impl FromStr for FtpResponse {
     /// // => FtpResponse {status: 220, content: "220 FTP server ready\r\n"}
     /// ```
     fn from_str(s: &str) -> Result<FtpResponse, FtpError> {
-        println!("{}", s);
-
         // Make sure the recieved content is long enough to contain a status code
         if s.len() >= 3 {
             // Grab the first 3 characters of the string
@@ -300,6 +298,16 @@ impl FtpConnection {
         }
     }
 
+    pub fn cd_up(&mut self) -> Result<(), FtpError> {
+        self.write_command("CDUP\r\n".to_string())?;
+        let res = self.wait_for_response()?;
+
+        match res.status {
+            250 => Ok(()),
+            _ => Err(InvalidResponseError),
+        }
+    }
+
     /// Lists all files in the current working directory.
     ///
     /// # Examples
@@ -390,18 +398,16 @@ impl FtpConnection {
                     Ok(v) => Ok(v),
                     Err(_) => {
                         // Process multiline reply
-                        println!("response {}", response);
+                        println!("{}", &response);
                         let expected_end = format!("{} ", &response[0..3]);
-                        println!(" ---- {} ----", &expected_end);
                         while response.len() < 5 || response[0..4] != expected_end {
                             response.clear();
                             match self.reader.read_line(&mut response) {
                                 Ok(_) => (),
                                 Err(_) => return Err(ConnectionError),
                             }
-                            println!("{} : {}", &expected_end, &response);
+                            println!("{}", &response);
                         }
-                        println!("... {}", &response);
                         FtpResponse::from_str(&response)
                     }
                 }
@@ -432,7 +438,9 @@ fn test_connect() -> Result<(), FtpError> {
         .change_working_directory("/rfc")
         .expect("CWD failed");
 
-    let files = ftp_conn.list().expect("File listing failed.");
-    println!("{}", files);
+    ftp_conn.cd_up().expect("Failed to cd up");
+
+    //let files = ftp_conn.list().expect("File listing failed.");
+    //println!("{}", files);
     Ok(())
 }
