@@ -308,6 +308,22 @@ impl FtpConnection {
         }
     }
 
+    pub fn pwd(&mut self) -> Result<String, FtpError> {
+        self.write_command("PWD\r\n".to_string())?;
+        let res = self.wait_for_response()?;
+        match res.status {
+            257 => {
+                // Fetch the path
+                let split: Vec<&str> = res.content.split('"').collect();
+                if split.len() < 2 {
+                    Err(InvalidResponseError)
+                } else {
+                    Ok(split[1].to_string())
+                }
+            }
+            _ => Err(InvalidResponseError),
+        }
+    }
     /// Lists all files in the current working directory.
     ///
     /// # Examples
@@ -398,7 +414,6 @@ impl FtpConnection {
                     Ok(v) => Ok(v),
                     Err(_) => {
                         // Process multiline reply
-                        println!("{}", &response);
                         let expected_end = format!("{} ", &response[0..3]);
                         while response.len() < 5 || response[0..4] != expected_end {
                             response.clear();
@@ -406,7 +421,6 @@ impl FtpConnection {
                                 Ok(_) => (),
                                 Err(_) => return Err(ConnectionError),
                             }
-                            println!("{}", &response);
                         }
                         FtpResponse::from_str(&response)
                     }
@@ -438,7 +452,11 @@ fn test_connect() -> Result<(), FtpError> {
         .change_working_directory("/rfc")
         .expect("CWD failed");
 
+    println!("{}", ftp_conn.pwd()?);
+
     ftp_conn.cd_up().expect("Failed to cd up");
+
+    println!("{}", ftp_conn.pwd()?);
 
     //let files = ftp_conn.list().expect("File listing failed.");
     //println!("{}", files);
