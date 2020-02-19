@@ -324,6 +324,16 @@ impl FtpConnection {
             _ => Err(InvalidResponseError),
         }
     }
+
+    pub fn mkdir(&mut self, dir_name: String) -> Result<(), FtpError> {
+        self.write_command(format!("MKD {}\r\n", dir_name))?;
+        let res = self.wait_for_response()?;
+        match res.status {
+            257 => Ok(()),
+            _ => Err(InvalidResponseError),
+        }
+    }
+
     /// Lists all files in the current working directory.
     ///
     /// # Examples
@@ -436,7 +446,7 @@ fn test_connect() -> Result<(), FtpError> {
     use std::net::Ipv4Addr;
     use std::net::SocketAddrV4;
 
-    let mut ftp_conn = FtpConnection::connect(SocketAddrV4::new(Ipv4Addr::new(4, 31, 198, 44), 21))
+    let mut ftp_conn = FtpConnection::connect(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 21))
         .expect("Ftp connection failed");
 
     ftp_conn
@@ -457,6 +467,8 @@ fn test_connect() -> Result<(), FtpError> {
     ftp_conn.cd_up().expect("Failed to cd up");
 
     println!("{}", ftp_conn.pwd()?);
+
+    ftp_conn.mkdir("Cool Directories Only".to_string())?;
 
     //let files = ftp_conn.list().expect("File listing failed.");
     //println!("{}", files);
