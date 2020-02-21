@@ -38,6 +38,6 @@
 *** TODO SITE
 *** TODO NOOP
 * Documentation
-** TODO Command functions
-** TODO Errors
-** TODO Status codes
+** DONE Command functions
+** DONE Errors
+** DONE Status codes
