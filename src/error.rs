@@ -33,6 +33,8 @@ pub enum FtpError {
     AccountRequired,
     /// Invalid file name
     InvalidFileName,
+    /// Bad sequence of commands given
+    BadCommandSequence,
 }
 
 impl fmt::Display for FtpError {
@@ -69,6 +71,7 @@ impl FtpError {
             FtpError::FileUnavailable => "The requested file was unavailable".to_string(),
             FtpError::AccountRequired => "The requested action requires an account".to_string(),
             FtpError::InvalidFileName => "The file name provided has an invalid name".to_string(),
+            FtpError::BadCommandSequence => "Bad command sequence".to_string(),
         }
     }
 }

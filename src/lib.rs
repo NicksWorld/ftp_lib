@@ -108,27 +108,58 @@ impl FtpConnection {
         }
     }
 
-    pub fn login(&mut self, username: String, password: Option<String>) -> Result<(), FtpError> {
-        self.write_command(format!("USER {}\r\n", username))?;
-        let username_res = self.wait_for_response()?;
-        match username_res.status {
+    pub fn login(&mut self, username: &str, password: Option<&str>) -> Result<(), FtpError> {
+        let command = format!("USER {}\r\n", username);
+        self.write_command(command.clone())?;
+
+        let user_result = self.wait_for_response()?;
+
+        match user_result.status {
+            // Successful action
             ftp_status::PASSWORD_NEEDED => {
-                self.write_command(format!(
-                    "PASS {}\r\n",
-                    password.unwrap_or_else(|| "".to_string())
-                ))?;
-                let password_res = self.wait_for_response()?;
-                match password_res.status {
+                let command = format!("PASS {}\r\n", password.unwrap_or_else(|| ""));
+                self.write_command(command.clone())?;
+                let pass_result = self.wait_for_response()?;
+
+                match pass_result.status {
                     ftp_status::LOGGED_IN => Ok(()),
+
+                    ftp_status::COMMAND_NOT_IMPLEMENTED_UNNECESARY => {
+                        Err(CommandUnimplemented(command))
+                    }
+
                     ftp_status::NOT_LOGGED_IN => Err(InvalidCredentialsError),
-                    _ => Err(InvalidResponseError(password_res)),
+                    ftp_status::SYNTAX_ERROR => Err(SyntaxError(command)),
+                    ftp_status::SYNTAX_ERROR_ARGUMENTS => Err(SyntaxErrorParameters(command)),
+                    ftp_status::BAD_COMMAND_SEQUENCE => Err(BadCommandSequence),
+                    ftp_status::SERVICE_NOT_AVAILABLE => Err(ServiceUnavailable),
+                    ftp_status::ACCOUNT_REQUIRED_LOGIN => Err(AccountRequired),
+                    _ => Err(InvalidResponseError(pass_result)),
                 }
             }
-            _ => Err(InvalidResponseError(username_res)),
+            ftp_status::LOGGED_IN => Ok(()),
+            // Error completing action
+            ftp_status::NOT_LOGGED_IN => Err(NotLoggedIn), // FIXME: Could possibly be success?
+            ftp_status::ACCOUNT_REQUIRED_LOGIN => Err(AccountRequired),
+
+            ftp_status::SYNTAX_ERROR => Err(SyntaxError(command)),
+            ftp_status::SYNTAX_ERROR_ARGUMENTS => Err(SyntaxErrorParameters(command)),
+            ftp_status::SERVICE_NOT_AVAILABLE => Err(ServiceUnavailable),
+            _ => Err(InvalidResponseError(user_result)),
         }
     }
 
-    pub fn cwd(&mut self, path: &str) -> Result<(), FtpError> {
+    pub fn quit(&mut self) -> Result<(), FtpError> {
+        let command = "QUIT\r\n".to_string();
+        self.write_command(command)?;
+
+        match self.reader.get_mut().shutdown(std::net::Shutdown::Both) {
+            Ok(_) => Ok(()),
+            Err(_) => Err(ConnectionError),
+        }
+    }
+
+    pub fn cd(&mut self, path: &str) -> Result<(), FtpError> {
         let command = format!("CWD {}\r\n", path);
         self.write_command(command.clone())?;
 
@@ -199,7 +230,7 @@ impl FtpConnection {
         }
     }
 
-    pub fn mkd(&mut self, dir_name: &str) -> Result<(), FtpError> {
+    pub fn mkdir(&mut self, dir_name: &str) -> Result<(), FtpError> {
         let command = format!("MKD {}\r\n", dir_name);
         self.write_command(command.clone())?;
 
@@ -220,11 +251,11 @@ impl FtpConnection {
         }
     }
 
-    pub fn retr(&mut self, file_name: &str) -> Result<Vec<u8>, FtpError> {
+    pub fn fetch_file(&mut self, file_name: &str) -> Result<Vec<u8>, FtpError> {
         let datastream_addr = self.pasv()?;
 
         let command = format!("RETR {}\r\n", file_name);
-        self.write_command(command.clone())?;
+        self.write_command(command)?;
 
         let data = self.connect_datastream(datastream_addr)?;
 
@@ -264,10 +295,13 @@ impl FtpConnection {
                     // Error completing action
                     ftp_status::ACCOUNT_REQUIRED_STORING => Err(AccountRequired),
                     ftp_status::FILE_NAME_INVALID => Err(InvalidFileName),
-                    // TODO: Probably incomplete
+
                     ftp_status::SYNTAX_ERROR => Err(SyntaxError(command)),
                     ftp_status::SYNTAX_ERROR_ARGUMENTS => Err(SyntaxErrorParameters(command)),
-
+                    ftp_status::COMMAND_NOT_IMPLEMENTED => Err(CommandUnimplemented(command)),
+                    ftp_status::BAD_COMMAND_SEQUENCE => Err(BadCommandSequence),
+                    ftp_status::SERVICE_NOT_AVAILABLE => Err(ServiceUnavailable),
+                    ftp_status::NOT_LOGGED_IN => Err(NotLoggedIn),
                     _ => Err(InvalidResponseError(rnto_result)),
                 }
             }
@@ -284,23 +318,44 @@ impl FtpConnection {
         }
     }
 
-    pub fn remove_directory(&mut self, directory: String) -> Result<(), FtpError> {
-        self.write_command(format!("RMD {}\r\n", directory))?;
+    pub fn rmdir(&mut self, directory: String) -> Result<(), FtpError> {
+        let command = format!("RMD {}\r\n", directory);
+        self.write_command(command.clone())?;
 
-        let res = self.wait_for_response()?;
-        match res.status {
+        let rmd_result = self.wait_for_response()?;
+        match rmd_result.status {
+            // Successful action
             ftp_status::FILE_ACTION_COMPLETE => Ok(()),
-            _ => Err(InvalidResponseError(res)),
+            // Error completing action
+            ftp_status::ACTION_NOT_TAKEN => Err(NoPermission),
+
+            ftp_status::SYNTAX_ERROR => Err(SyntaxError(command)),
+            ftp_status::SYNTAX_ERROR_ARGUMENTS => Err(SyntaxErrorParameters(command)),
+            ftp_status::COMMAND_NOT_IMPLEMENTED => Err(CommandUnimplemented(command)),
+            ftp_status::SERVICE_NOT_AVAILABLE => Err(ServiceUnavailable),
+            ftp_status::NOT_LOGGED_IN => Err(NotLoggedIn),
+            _ => Err(InvalidResponseError(rmd_result)),
         }
     }
 
-    pub fn remove_file(&mut self, file: String) -> Result<(), FtpError> {
-        self.write_command(format!("DELE {}\r\n", file))?;
+    pub fn rm(&mut self, file: String) -> Result<(), FtpError> {
+        let command = format!("DELE {}\r\n", file);
+        self.write_command(command.clone())?;
 
-        let res = self.wait_for_response()?;
-        match res.status {
-            ftp_status::COMMAND_OKAY => Ok(()),
-            _ => Err(InvalidResponseError(res)),
+        let dele_result = self.wait_for_response()?;
+        match dele_result.status {
+            // Successful action
+            ftp_status::COMMAND_OKAY | ftp_status::FILE_ACTION_COMPLETE => Ok(()),
+            // Error completing action
+            ftp_status::FILE_ACTION_NOT_TAKEN => Err(FileUnavailable),
+            ftp_status::ACTION_NOT_TAKEN => Err(FileUnavailable),
+
+            ftp_status::SYNTAX_ERROR => Err(SyntaxError(command)),
+            ftp_status::SYNTAX_ERROR_ARGUMENTS => Err(SyntaxErrorParameters(command)),
+            ftp_status::COMMAND_NOT_IMPLEMENTED => Err(CommandUnimplemented(command)),
+            ftp_status::SERVICE_NOT_AVAILABLE => Err(ServiceUnavailable),
+            ftp_status::NOT_LOGGED_IN => Err(NotLoggedIn),
+            _ => Err(InvalidResponseError(dele_result)),
         }
     }
 
@@ -316,6 +371,7 @@ impl FtpConnection {
                 Err(_) => return Err(ConnectionError),
             }
 
+            // I have absolutely no idea what the following could return
             match datastream.shutdown(std::net::Shutdown::Both) {
                 Ok(_) => (),
                 Err(_) => return Err(DatastreamConnectionError),
@@ -359,6 +415,29 @@ impl FtpConnection {
         Ok(String::from_utf8_lossy(&datavec).to_string())
     }
 
+    // TODO: Test, I cannot find a ftp implementation that supports it yet
+    pub fn mount_structure(&mut self, path: &str) -> Result<(), FtpError> {
+        let command = format!("SMNT {}\r\n", path);
+        self.write_command(command.clone())?;
+
+        let smnt_result = self.wait_for_response()?;
+
+        match smnt_result.status {
+            // Successful action
+            ftp_status::COMMAND_OKAY | ftp_status::FILE_ACTION_COMPLETE => Ok(()),
+            // Error completing action
+            ftp_status::COMMAND_NOT_IMPLEMENTED_UNNECESARY => Err(CommandUnimplemented(command)),
+            ftp_status::ACTION_NOT_TAKEN => Err(NoPermission),
+
+            ftp_status::SYNTAX_ERROR => Err(SyntaxError(command)),
+            ftp_status::SYNTAX_ERROR_ARGUMENTS => Err(SyntaxErrorParameters(command)),
+            ftp_status::COMMAND_NOT_IMPLEMENTED => Err(CommandUnimplemented(command)),
+            ftp_status::SERVICE_NOT_AVAILABLE => Err(ServiceUnavailable),
+            ftp_status::NOT_LOGGED_IN => Err(NotLoggedIn),
+            _ => Err(InvalidResponseError(smnt_result)),
+        }
+    }
+
     fn connect_datastream(&self, datastream_addr: SocketAddrV4) -> Result<Vec<u8>, FtpError> {
         match TcpStream::connect(datastream_addr) {
             Ok(mut datastream) => {
@@ -380,10 +459,18 @@ impl FtpConnection {
     }
 
     fn pasv(&mut self) -> Result<SocketAddrV4, FtpError> {
-        self.write_command("PASV\r\n".to_string())?;
+        let command = "PASV\r\n".to_string();
+        self.write_command(command.clone())?;
         let pasv = self.wait_for_response()?;
         match pasv.status {
+            // Successful action
             ftp_status::ENTERING_PASSIVE => pasv.parse_pasv_addr(),
+            // Error completing action
+            ftp_status::SYNTAX_ERROR => Err(SyntaxError(command)),
+            ftp_status::SYNTAX_ERROR_ARGUMENTS => Err(SyntaxErrorParameters(command)),
+            ftp_status::COMMAND_NOT_IMPLEMENTED => Err(CommandUnimplemented(command)),
+            ftp_status::SERVICE_NOT_AVAILABLE => Err(ServiceUnavailable),
+            ftp_status::NOT_LOGGED_IN => Err(NotLoggedIn),
             _ => Err(InvalidResponseError(pasv)),
         }
     }
@@ -427,15 +514,12 @@ fn test_connect() {
 
     match FtpConnection::connect(SocketAddrV4::new(Ipv4Addr::new(4, 31, 198, 44), 21)) {
         Ok(mut ftp_conn) => {
-            match ftp_conn.login(
-                "anonymous".to_string(),
-                Some("fake@email.service".to_string()),
-            ) {
+            match ftp_conn.login("anonymous", Some("fake@email.service")) {
                 Ok(_) => (),
                 Err(e) => println!("{}", e),
             }
 
-            ftp_conn.cwd("rfc").unwrap();
+            ftp_conn.cd("rfc").unwrap();
 
             println!("{}", ftp_conn.list().unwrap());
         }

@@ -1,0 +1,43 @@
+* Command Implementations
+** Login commands
+*** DONE USER
+*** DONE PASS
+*** TODO ACCT
+*** DONE CWD
+*** DONE CDUP
+*** DONE SMNT
+** Logout commands
+*** TODO REIN
+*** DONE QUIT
+*** TODO PORT
+*** DONE PASV
+*** TODO MODE
+*** TODO TYPE
+*** TODO STRU
+** File action commands
+*** TODO ALLO
+*** TODO REST
+*** TODO STOR (status implementation)
+*** TODO STOU
+*** TODO RETR (status implementation)
+*** TODO LIST (status implementation)
+*** TODO NLST
+*** TODO APPE
+*** DONE RNFR
+*** DONE RNTO
+*** DONE DELE
+*** DONE RMD
+*** DONE MKD
+*** DONE PWD
+*** TODO ABOR
+** Informational commands
+*** TODO SYST
+*** TODO STAT
+*** TODO HELP
+** Miscellaneous commands
+*** TODO SITE
+*** TODO NOOP
+* Documentation
+** TODO Command functions
+** TODO Errors
+** TODO Status codes
