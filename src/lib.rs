@@ -90,6 +90,19 @@ pub struct FtpConnection {
 }
 
 impl FtpConnection {
+	/// Initiates the connection to the FTP server.
+	///
+	/// Example:
+	/// Connect to 127.0.0.1 then close the connection.
+	/// ```
+	/// use ftp_lib::FtpConnection;
+	/// use std::net::SocketAddrV4;
+	/// 
+	/// let mut ftp_conn = FtpConnection::connect(
+	/// 	"127.0.0.1:21".parse().unwrap()
+	/// ).unwrap(); // Initiate the connection
+	///
+	/// ftp_conn.quit();
 	pub fn connect(connection_addr: SocketAddrV4) -> Result<FtpConnection, FtpError> {
 		match TcpStream::connect(connection_addr) {
 			Ok(stream) => {
@@ -108,6 +121,22 @@ impl FtpConnection {
 		}
 	}
 
+	/// Initiates the connection to the FTP server.
+	///
+	/// Example:
+	/// Connect to 127.0.0.1 then close the connection.
+	/// ```
+	/// use ftp_lib::FtpConnection;
+	/// use std::net::SocketAddrV4;
+	/// 
+	/// let mut ftp_conn = FtpConnection::connect(
+	/// 	"127.0.0.1:21".parse().unwrap()
+	/// ).unwrap();
+	///
+	/// // login(username, password)
+	/// ftp_conn.login("anonymous", Some("fake@email.service")).unwrap(); // Login to the server
+	///
+	/// ftp_conn.quit();
 	pub fn login(&mut self, username: &str, password: Option<&str>) -> Result<(), FtpError> {
 		let command = format!("USER {}\r\n", username);
 		self.write_command(command.clone())?;
@@ -311,6 +340,49 @@ impl FtpConnection {
 		}
 	}
 	
+	/// Lists files in the current directory
+	///
+	/// Example:
+	/// Lists all files in /
+	/// ```
+	/// use ftp_lib::FtpConnection;
+	/// use std::net::SocketAddrV4;
+	/// 
+	/// let mut ftp_conn = FtpConnection::connect(
+	/// 	"127.0.0.1:21".parse().unwrap()
+	/// ).unwrap();
+	///
+	/// ftp_conn.login("anonymous", Some("fake@email.service")).unwrap();
+	///
+	/// # // Add file to show
+	/// # ftp_conn.write_file("cool.txt", "".as_bytes().to_vec()).unwrap();
+	/// println!("{}", ftp_conn.list().unwrap()); // Print files in current directory
+	/// # // Clean up file
+	/// # ftp_conn.rm("cool.txt").unwrap();
+	///
+	/// ftp_conn.quit();
+	pub fn list(&mut self) -> Result<String, FtpError> {
+		let datastream_addr = self.pasv()?;
+
+		self.write_command("LIST\r\n".to_string())?;
+
+		let datavec = self.connect_datastream(datastream_addr)?;
+
+		let res = self.wait_for_response()?;
+		match res.status {
+			ftp_status::FILE_OPENING_DATA => (),
+			_ => return Err(InvalidResponseError(res)),
+		}
+
+		let res = self.wait_for_response()?;
+		match res.status {
+			ftp_status::DATA_CLOSING => (),
+			_ => return Err(InvalidResponseError(res)),
+		}
+
+		Ok(String::from_utf8_lossy(&datavec).to_string())
+	}
+	
 	/// Creates a new directory on the FTP server.
 	///
 	/// Example:
@@ -349,115 +421,6 @@ impl FtpConnection {
 			ftp_status::SERVICE_NOT_AVAILABLE => Err(ServiceUnavailable),
 			ftp_status::NOT_LOGGED_IN => Err(NotLoggedIn),
 			_ => Err(InvalidResponseError(mkd_result)),
-		}
-	}
-
-	/// Fetches the contents of the specified file
-	///
-	/// Example:
-	/// Connect to localhost then read README.txt
-	/// ```
-	/// use ftp_lib::FtpConnection;
-	/// use std::net::SocketAddrV4;
-	/// 
-	/// let mut ftp_conn = FtpConnection::connect(
-	/// 	"127.0.0.1:21".parse().unwrap()
-	/// ).unwrap();
-	///
-	/// ftp_conn.login("anonymous", Some("fake@email.service")).unwrap();
-	///
-	/// println!("{}",
-	/// 	 String::from_utf8_lossy(&ftp_conn.fetch_file("README.txt").unwrap()) // Fetch the contents of the file
-	/// );
-	///
-	/// ftp_conn.quit();
-	pub fn fetch_file(&mut self, file_name: &str) -> Result<Vec<u8>, FtpError> {
-		let datastream_addr = self.pasv()?;
-
-		let command = format!("RETR {}\r\n", file_name);
-		self.write_command(command)?;
-
-		let data = self.connect_datastream(datastream_addr)?;
-
-		// NOTE: The following statuses do not cover all cases.
-		// I am not sure where status can be returned for now.
-		let res = self.wait_for_response()?;
-		match res.status { // TODO: This one can recieve no such file or dir (451)
-			ftp_status::FILE_OPENING_DATA => (),
-			_ => return Err(InvalidResponseError(res)),
-		}
-
-		let res = self.wait_for_response()?;
-		match res.status {
-			ftp_status::DATA_CLOSING => (),
-			_ => return Err(InvalidResponseError(res)),
-		}
-
-		Ok(data)
-	}
-
-	/// Renames the specified file on the FTP server
-	///
-	/// Example:
-	/// Connect to localhost rename a new file
-	/// ```
-	/// use ftp_lib::FtpConnection;
-	/// use std::net::SocketAddrV4;
-	/// 
-	/// let mut ftp_conn = FtpConnection::connect(
-	/// 	"127.0.0.1:21".parse().unwrap()
-	/// ).unwrap();
-	/// 
-	/// ftp_conn.login("anonymous", Some("fake@email.service")).unwrap();
-	///
-	/// # // Create file
-	/// # ftp_conn.write_file("test.txt", "".as_bytes().to_vec()).unwrap();
-	/// println!("{}", ftp_conn.list().unwrap()); // Display begining file structure
-	/// ftp_conn.rename_file("test.txt", "cool.txt"); // Rename from test.txt to cool.txt
-	/// println!("{}", ftp_conn.list().unwrap()); // Verify the change
-	/// # // Cleanup
-	/// # ftp_conn.rm("cool.txt").unwrap();
-	///
-	/// ftp_conn.quit();
-	pub fn rename_file(&mut self, file: &str, new_name: &str) -> Result<(), FtpError> {
-		let command = format!("RNFR {}\r\n", file);
-		self.write_command(command.clone())?;
-
-		let rnfr_result = self.wait_for_response()?;
-		match rnfr_result.status {
-			// Successful action
-			ftp_status::FILE_ACTION_COMPLETE | ftp_status::FILE_NEED_INFORMATION => {
-				let command = format!("RNTO {}\r\n", new_name);
-				self.write_command(command.clone())?;
-
-				let rnto_result = self.wait_for_response()?;
-
-				match rnto_result.status {
-					// Successful action
-					ftp_status::FILE_ACTION_COMPLETE => Ok(()),
-					// Error completing action
-					ftp_status::ACCOUNT_REQUIRED_STORING => Err(AccountRequired),
-					ftp_status::FILE_NAME_INVALID => Err(InvalidFileName),
-
-					ftp_status::SYNTAX_ERROR => Err(SyntaxError(command)),
-					ftp_status::SYNTAX_ERROR_ARGUMENTS => Err(SyntaxErrorParameters(command)),
-					ftp_status::COMMAND_NOT_IMPLEMENTED => Err(CommandUnimplemented(command)),
-					ftp_status::BAD_COMMAND_SEQUENCE => Err(BadCommandSequence),
-					ftp_status::SERVICE_NOT_AVAILABLE => Err(ServiceUnavailable),
-					ftp_status::NOT_LOGGED_IN => Err(NotLoggedIn),
-					_ => Err(InvalidResponseError(rnto_result)),
-				}
-			}
-			// Error completing action
-			ftp_status::FILE_ACTION_NOT_TAKEN => Err(FileUnavailable),
-			ftp_status::ACTION_NOT_TAKEN => Err(FileUnavailable),
-
-			ftp_status::SYNTAX_ERROR => Err(SyntaxError(command)),
-			ftp_status::SYNTAX_ERROR_ARGUMENTS => Err(SyntaxErrorParameters(command)),
-			ftp_status::COMMAND_NOT_IMPLEMENTED => Err(CommandUnimplemented(command)),
-			ftp_status::SERVICE_NOT_AVAILABLE => Err(ServiceUnavailable),
-			ftp_status::NOT_LOGGED_IN => Err(NotLoggedIn),
-			_ => Err(InvalidResponseError(rnfr_result)),
 		}
 	}
 
@@ -502,10 +465,10 @@ impl FtpConnection {
 		}
 	}
 
-	/// Removees a file on the FTP server.
+	/// Fetches the contents of the specified file
 	///
 	/// Example:
-	/// Removes test.txt
+	/// Connect to localhost then read README.txt
 	/// ```
 	/// use ftp_lib::FtpConnection;
 	/// use std::net::SocketAddrV4;
@@ -516,32 +479,36 @@ impl FtpConnection {
 	///
 	/// ftp_conn.login("anonymous", Some("fake@email.service")).unwrap();
 	///
-	/// # // Create file to remove
-	/// # ftp_conn.write_file("test.txt", "".as_bytes().to_vec()).unwrap();
-	/// println!("{}", ftp_conn.list().unwrap()); // Show before
-	/// ftp_conn.rm("test.txt").unwrap(); // Remove the directory
-	/// println!("{}", ftp_conn.list().unwrap()); // Show after
+	/// # ftp_conn.write_file("README.txt", "This is the README.txt file. Cool, right?".as_bytes().to_vec()).unwrap();
+	/// println!("{}",
+	/// 	 String::from_utf8_lossy(&ftp_conn.fetch_file("README.txt").unwrap()) // Fetch the contents of the file
+	/// );
+	/// # ftp_conn.rm("README.txt").unwrap();
 	///
 	/// ftp_conn.quit();
-	pub fn rm(&mut self, file: &str) -> Result<(), FtpError> {
-		let command = format!("DELE {}\r\n", file);
-		self.write_command(command.clone())?;
+	pub fn fetch_file(&mut self, file_name: &str) -> Result<Vec<u8>, FtpError> {
+		let datastream_addr = self.pasv()?;
 
-		let dele_result = self.wait_for_response()?;
-		match dele_result.status {
-			// Successful action
-			ftp_status::COMMAND_OKAY | ftp_status::FILE_ACTION_COMPLETE => Ok(()),
-			// Error completing action
-			ftp_status::FILE_ACTION_NOT_TAKEN => Err(FileUnavailable),
-			ftp_status::ACTION_NOT_TAKEN => Err(FileUnavailable),
+		let command = format!("RETR {}\r\n", file_name);
+		self.write_command(command)?;
 
-			ftp_status::SYNTAX_ERROR => Err(SyntaxError(command)),
-			ftp_status::SYNTAX_ERROR_ARGUMENTS => Err(SyntaxErrorParameters(command)),
-			ftp_status::COMMAND_NOT_IMPLEMENTED => Err(CommandUnimplemented(command)),
-			ftp_status::SERVICE_NOT_AVAILABLE => Err(ServiceUnavailable),
-			ftp_status::NOT_LOGGED_IN => Err(NotLoggedIn),
-			_ => Err(InvalidResponseError(dele_result)),
+		let data = self.connect_datastream(datastream_addr)?;
+
+		// NOTE: The following statuses do not cover all cases.
+		// I am not sure where status can be returned for now.
+		let res = self.wait_for_response()?;
+		match res.status { // TODO: This one can recieve no such file or dir (451)
+			ftp_status::FILE_OPENING_DATA => (),
+			_ => return Err(InvalidResponseError(res)),
 		}
+
+		let res = self.wait_for_response()?;
+		match res.status {
+			ftp_status::DATA_CLOSING => (),
+			_ => return Err(InvalidResponseError(res)),
+		}
+
+		Ok(data)
 	}
 
 	/// Removees a file on the FTP server.
@@ -600,11 +567,11 @@ impl FtpConnection {
 			Err(ConnectionError)
 		}
 	}
-
-	/// Lists files in the current directory
+	
+	/// Removes a file on the FTP server.
 	///
 	/// Example:
-	/// Lists all files in /
+	/// Removes test.txt
 	/// ```
 	/// use ftp_lib::FtpConnection;
 	/// use std::net::SocketAddrV4;
@@ -615,33 +582,97 @@ impl FtpConnection {
 	///
 	/// ftp_conn.login("anonymous", Some("fake@email.service")).unwrap();
 	///
-	/// # // Add file to show
-	/// # ftp_conn.write_file("cool.txt", "".as_bytes().to_vec()).unwrap();
-	/// println!("{}", ftp_conn.list().unwrap()); // Print files in current directory
-	/// # // Clean up file
+	/// # // Create file to remove
+	/// # ftp_conn.write_file("test.txt", "".as_bytes().to_vec()).unwrap();
+	/// println!("{}", ftp_conn.list().unwrap()); // Show before
+	/// ftp_conn.rm("test.txt").unwrap(); // Remove the directory
+	/// println!("{}", ftp_conn.list().unwrap()); // Show after
+	///
+	/// ftp_conn.quit();
+	pub fn rm(&mut self, file: &str) -> Result<(), FtpError> {
+		let command = format!("DELE {}\r\n", file);
+		self.write_command(command.clone())?;
+
+		let dele_result = self.wait_for_response()?;
+		match dele_result.status {
+			// Successful action
+			ftp_status::COMMAND_OKAY | ftp_status::FILE_ACTION_COMPLETE => Ok(()),
+			// Error completing action
+			ftp_status::FILE_ACTION_NOT_TAKEN => Err(FileUnavailable),
+			ftp_status::ACTION_NOT_TAKEN => Err(FileUnavailable),
+
+			ftp_status::SYNTAX_ERROR => Err(SyntaxError(command)),
+			ftp_status::SYNTAX_ERROR_ARGUMENTS => Err(SyntaxErrorParameters(command)),
+			ftp_status::COMMAND_NOT_IMPLEMENTED => Err(CommandUnimplemented(command)),
+			ftp_status::SERVICE_NOT_AVAILABLE => Err(ServiceUnavailable),
+			ftp_status::NOT_LOGGED_IN => Err(NotLoggedIn),
+			_ => Err(InvalidResponseError(dele_result)),
+		}
+	}
+
+	/// Renames the specified file on the FTP server
+	///
+	/// Example:
+	/// Connect to localhost rename a new file
+	/// ```
+	/// use ftp_lib::FtpConnection;
+	/// use std::net::SocketAddrV4;
+	/// 
+	/// let mut ftp_conn = FtpConnection::connect(
+	/// 	"127.0.0.1:21".parse().unwrap()
+	/// ).unwrap();
+	/// 
+	/// ftp_conn.login("anonymous", Some("fake@email.service")).unwrap();
+	///
+	/// # // Create file
+	/// # ftp_conn.write_file("test.txt", "".as_bytes().to_vec()).unwrap();
+	/// println!("{}", ftp_conn.list().unwrap()); // Display begining file structure
+	/// ftp_conn.rename("test.txt", "cool.txt"); // Rename from test.txt to cool.txt
+	/// println!("{}", ftp_conn.list().unwrap()); // Verify the change
+	/// # // Cleanup
 	/// # ftp_conn.rm("cool.txt").unwrap();
 	///
 	/// ftp_conn.quit();
-	pub fn list(&mut self) -> Result<String, FtpError> {
-		let datastream_addr = self.pasv()?;
+	pub fn rename(&mut self, src: &str, dst: &str) -> Result<(), FtpError> {
+		let command = format!("RNFR {}\r\n", src);
+		self.write_command(command.clone())?;
 
-		self.write_command("LIST\r\n".to_string())?;
+		let rnfr_result = self.wait_for_response()?;
+		match rnfr_result.status {
+			// Successful action
+			ftp_status::FILE_ACTION_COMPLETE | ftp_status::FILE_NEED_INFORMATION => {
+				let command = format!("RNTO {}\r\n", dst);
+				self.write_command(command.clone())?;
 
-		let datavec = self.connect_datastream(datastream_addr)?;
+				let rnto_result = self.wait_for_response()?;
 
-		let res = self.wait_for_response()?;
-		match res.status {
-			ftp_status::FILE_OPENING_DATA => (),
-			_ => return Err(InvalidResponseError(res)),
+				match rnto_result.status {
+					// Successful action
+					ftp_status::FILE_ACTION_COMPLETE => Ok(()),
+					// Error completing action
+					ftp_status::ACCOUNT_REQUIRED_STORING => Err(AccountRequired),
+					ftp_status::FILE_NAME_INVALID => Err(InvalidFileName),
+
+					ftp_status::SYNTAX_ERROR => Err(SyntaxError(command)),
+					ftp_status::SYNTAX_ERROR_ARGUMENTS => Err(SyntaxErrorParameters(command)),
+					ftp_status::COMMAND_NOT_IMPLEMENTED => Err(CommandUnimplemented(command)),
+					ftp_status::BAD_COMMAND_SEQUENCE => Err(BadCommandSequence),
+					ftp_status::SERVICE_NOT_AVAILABLE => Err(ServiceUnavailable),
+					ftp_status::NOT_LOGGED_IN => Err(NotLoggedIn),
+					_ => Err(InvalidResponseError(rnto_result)),
+				}
+			}
+			// Error completing action
+			ftp_status::FILE_ACTION_NOT_TAKEN => Err(FileUnavailable),
+			ftp_status::ACTION_NOT_TAKEN => Err(FileUnavailable),
+
+			ftp_status::SYNTAX_ERROR => Err(SyntaxError(command)),
+			ftp_status::SYNTAX_ERROR_ARGUMENTS => Err(SyntaxErrorParameters(command)),
+			ftp_status::COMMAND_NOT_IMPLEMENTED => Err(CommandUnimplemented(command)),
+			ftp_status::SERVICE_NOT_AVAILABLE => Err(ServiceUnavailable),
+			ftp_status::NOT_LOGGED_IN => Err(NotLoggedIn),
+			_ => Err(InvalidResponseError(rnfr_result)),
 		}
-
-		let res = self.wait_for_response()?;
-		match res.status {
-			ftp_status::DATA_CLOSING => (),
-			_ => return Err(InvalidResponseError(res)),
-		}
-
-		Ok(String::from_utf8_lossy(&datavec).to_string())
 	}
 
 	// TODO: Test, I cannot find a ftp implementation that supports it yet
