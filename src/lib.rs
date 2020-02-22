@@ -1,3 +1,45 @@
+#![deny(
+    missing_docs,
+    missing_debug_implementations,
+    missing_copy_implementations,
+    trivial_casts,
+    trivial_numeric_casts,
+    unsafe_code,
+    unstable_features,
+    unused_import_braces,
+    unused_qualifications
+)]
+
+//! # ftp_lib
+//! ftp_lib is a FTP implementation for a school project
+//!
+//! Examples:
+//! ```
+//! use ftp_lib::FtpConnection;
+//! use std::net::SocketAddrV4;
+//!
+//! let mut ftp_conn = FtpConnection::connect(
+//!     "127.0.0.1:21".parse().unwrap()
+//! ).unwrap();
+//!
+//! ftp_conn.login("anonymous", Some("fake@email.service")).unwrap();
+//!
+//! // Create a directory
+//! ftp_conn.mkdir("test_dir").unwrap();
+//!
+//! // Move into the newly created directory and print the working directory
+//! ftp_conn.cd("test_dir").unwrap();
+//! println!("PWD: {:?}", ftp_conn.pwd().unwrap());
+//!
+//! // Return to / from /test_dir and print the working directory
+//! ftp_conn.cdup().unwrap();
+//! println!("PWD: {:?}", ftp_conn.pwd().unwrap());
+//!
+//! // Remove the directory created
+//! ftp_conn.rmdir("test_dir").unwrap();
+//!
+//! ftp_conn.quit();
+
 use std::net::Ipv4Addr;
 use std::net::SocketAddrV4;
 use std::net::TcpStream;
@@ -9,20 +51,33 @@ use std::io::BufReader;
 use std::io::Read;
 use std::io::Write;
 
+/// Module containing all errors returned by ftp_lib.
 pub mod error;
 use error::FtpError;
 use error::FtpError::*;
 
+/// Module containing all the status codes required to handle responses.
 pub mod status;
 use status::ftp_status;
 
+/// Data structure that contains a response from the FTP server.
 #[derive(Debug, Clone)]
 pub struct FtpResponse {
+    /// The status code recieved (see status.rs for more information)
     pub status: u32,
+    /// The content of the message recieved (FTP often has very human readable responses)
     pub content: String,
 }
 
 impl FtpResponse {
+    /// Parses the ip and port from the PASV command's result.
+    ///
+    /// Examples:
+    /// ```
+    /// let response = FtpResponse {
+    ///     status: 227,
+    ///     content: "227 Entering passive (127,0,0,1,250,29)"
+    /// }
     pub fn parse_pasv_addr(&self) -> Result<SocketAddrV4, FtpError> {
         if self.status != ftp_status::ENTERING_PASSIVE {
             return Err(InvalidTypeError);
@@ -85,6 +140,20 @@ impl FromStr for FtpResponse {
     }
 }
 
+/// The main type used for communication with the FTP server.
+///
+/// Examples:
+/// Connection
+/// ```
+/// use ftp_lib::FtpConnection;
+/// use std::net::SocketAddrV4;
+///
+/// let mut ftp_conn = FtpConnection::connect(
+///     "127.0.0.1:21".parse().unwrap()
+/// ).unwrap(); // Initiate the connection
+///
+/// ftp_conn.quit();
+#[derive(Debug)]
 pub struct FtpConnection {
     reader: BufReader<TcpStream>,
 }

@@ -1,3 +1,4 @@
+/// Module responsible for containing the many constants needed for holding FTP response codes.
 pub mod ftp_status {
     /// Command okay.
     pub const COMMAND_OKAY: u32 = 200;

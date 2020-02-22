@@ -44,6 +44,7 @@ impl fmt::Display for FtpError {
 }
 
 impl FtpError {
+    /// Converts FtpError to a human readable error message.
     pub fn as_string(&self) -> String {
         match self {
             FtpError::InvalidResponseError(v) => {
