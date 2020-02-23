@@ -1,0 +1,1 @@
+initSidebarItems({"mod":[["ftp_status","Module responsible for containing the many constants needed for holding FTP response codes."]]});

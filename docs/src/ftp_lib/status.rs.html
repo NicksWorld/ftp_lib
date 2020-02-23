@@ -1,0 +1,211 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source to the Rust file `src/status.rs`."><meta name="keywords" content="rust, rustlang, rust-lang"><title>status.rs.html -- source</title><link rel="stylesheet" type="text/css" href="../../normalize.css"><link rel="stylesheet" type="text/css" href="../../rustdoc.css" id="mainThemeStyle"><link rel="stylesheet" type="text/css" href="../../dark.css"><link rel="stylesheet" type="text/css" href="../../light.css" id="themeStyle"><script src="../../storage.js"></script><noscript><link rel="stylesheet" href="../../noscript.css"></noscript><link rel="shortcut icon" href="../../favicon.ico"><style type="text/css">#crate-search{background-image:url("../../down-arrow.svg");}</style></head><body class="rustdoc source"><!--[if lte IE 8]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="sidebar-menu">&#9776;</div><a href='../../ftp_lib/index.html'><div class='logo-container'><img src='../../rust-logo.png' alt='logo'></div></a></nav><div class="theme-picker"><button id="theme-picker" aria-label="Pick another theme!"><img src="../../brush.svg" width="18" alt="Pick another theme!"></button><div id="theme-choices"></div></div><script src="../../theme.js"></script><nav class="sub"><form class="search-form"><div class="search-container"><div><select id="crate-search"><option value="All crates">All crates</option></select><input class="search-input" name="search" disabled autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"></div><a id="settings-menu" href="../../settings.html"><img src="../../wheel.svg" width="18" alt="Change settings"></a></div></form></nav><section id="main" class="content"><pre class="line-numbers"><span id="1">  1</span>
+<span id="2">  2</span>
+<span id="3">  3</span>
+<span id="4">  4</span>
+<span id="5">  5</span>
+<span id="6">  6</span>
+<span id="7">  7</span>
+<span id="8">  8</span>
+<span id="9">  9</span>
+<span id="10"> 10</span>
+<span id="11"> 11</span>
+<span id="12"> 12</span>
+<span id="13"> 13</span>
+<span id="14"> 14</span>
+<span id="15"> 15</span>
+<span id="16"> 16</span>
+<span id="17"> 17</span>
+<span id="18"> 18</span>
+<span id="19"> 19</span>
+<span id="20"> 20</span>
+<span id="21"> 21</span>
+<span id="22"> 22</span>
+<span id="23"> 23</span>
+<span id="24"> 24</span>
+<span id="25"> 25</span>
+<span id="26"> 26</span>
+<span id="27"> 27</span>
+<span id="28"> 28</span>
+<span id="29"> 29</span>
+<span id="30"> 30</span>
+<span id="31"> 31</span>
+<span id="32"> 32</span>
+<span id="33"> 33</span>
+<span id="34"> 34</span>
+<span id="35"> 35</span>
+<span id="36"> 36</span>
+<span id="37"> 37</span>
+<span id="38"> 38</span>
+<span id="39"> 39</span>
+<span id="40"> 40</span>
+<span id="41"> 41</span>
+<span id="42"> 42</span>
+<span id="43"> 43</span>
+<span id="44"> 44</span>
+<span id="45"> 45</span>
+<span id="46"> 46</span>
+<span id="47"> 47</span>
+<span id="48"> 48</span>
+<span id="49"> 49</span>
+<span id="50"> 50</span>
+<span id="51"> 51</span>
+<span id="52"> 52</span>
+<span id="53"> 53</span>
+<span id="54"> 54</span>
+<span id="55"> 55</span>
+<span id="56"> 56</span>
+<span id="57"> 57</span>
+<span id="58"> 58</span>
+<span id="59"> 59</span>
+<span id="60"> 60</span>
+<span id="61"> 61</span>
+<span id="62"> 62</span>
+<span id="63"> 63</span>
+<span id="64"> 64</span>
+<span id="65"> 65</span>
+<span id="66"> 66</span>
+<span id="67"> 67</span>
+<span id="68"> 68</span>
+<span id="69"> 69</span>
+<span id="70"> 70</span>
+<span id="71"> 71</span>
+<span id="72"> 72</span>
+<span id="73"> 73</span>
+<span id="74"> 74</span>
+<span id="75"> 75</span>
+<span id="76"> 76</span>
+<span id="77"> 77</span>
+<span id="78"> 78</span>
+<span id="79"> 79</span>
+<span id="80"> 80</span>
+<span id="81"> 81</span>
+<span id="82"> 82</span>
+<span id="83"> 83</span>
+<span id="84"> 84</span>
+<span id="85"> 85</span>
+<span id="86"> 86</span>
+<span id="87"> 87</span>
+<span id="88"> 88</span>
+<span id="89"> 89</span>
+<span id="90"> 90</span>
+<span id="91"> 91</span>
+<span id="92"> 92</span>
+<span id="93"> 93</span>
+<span id="94"> 94</span>
+<span id="95"> 95</span>
+<span id="96"> 96</span>
+<span id="97"> 97</span>
+<span id="98"> 98</span>
+<span id="99"> 99</span>
+<span id="100">100</span>
+<span id="101">101</span>
+<span id="102">102</span>
+<span id="103">103</span>
+<span id="104">104</span>
+</pre><div class="example-wrap"><pre class="rust ">
+<span class="doccomment">/// Module responsible for containing the many constants needed for holding FTP response codes.</span>
+<span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">ftp_status</span> {
+    <span class="doccomment">/// Command okay.</span>
+    <span class="kw">pub</span> <span class="kw">const</span> <span class="ident">COMMAND_OKAY</span>: <span class="ident">u32</span> <span class="op">=</span> <span class="number">200</span>;
+    <span class="doccomment">/// Syntax error, command unrecognized.</span>
+    <span class="doccomment">///</span>
+    <span class="doccomment">/// This may include errors such as command line to long.</span>
+    <span class="kw">pub</span> <span class="kw">const</span> <span class="ident">SYNTAX_ERROR</span>: <span class="ident">u32</span> <span class="op">=</span> <span class="number">500</span>;
+    <span class="doccomment">/// Syntax error in parameters or arguments.</span>
+    <span class="kw">pub</span> <span class="kw">const</span> <span class="ident">SYNTAX_ERROR_ARGUMENTS</span>: <span class="ident">u32</span> <span class="op">=</span> <span class="number">501</span>;
+    <span class="doccomment">/// Command not implemented, superfluous at this site.</span>
+    <span class="kw">pub</span> <span class="kw">const</span> <span class="ident">COMMAND_NOT_IMPLEMENTED_UNNECESARY</span>: <span class="ident">u32</span> <span class="op">=</span> <span class="number">202</span>;
+    <span class="doccomment">/// Command not implemented.</span>
+    <span class="kw">pub</span> <span class="kw">const</span> <span class="ident">COMMAND_NOT_IMPLEMENTED</span>: <span class="ident">u32</span> <span class="op">=</span> <span class="number">502</span>;
+    <span class="doccomment">/// Bad sequence of commands.</span>
+    <span class="kw">pub</span> <span class="kw">const</span> <span class="ident">BAD_COMMAND_SEQUENCE</span>: <span class="ident">u32</span> <span class="op">=</span> <span class="number">503</span>;
+    <span class="doccomment">/// Command not implemented for that parameter.</span>
+    <span class="kw">pub</span> <span class="kw">const</span> <span class="ident">COMMAND_NOT_IMPLEMENTED_PARAMETER</span>: <span class="ident">u32</span> <span class="op">=</span> <span class="number">504</span>;
+    <span class="doccomment">/// Restart marker reply.</span>
+    <span class="doccomment">/// In this case, the text is exact and not left to the</span>
+    <span class="doccomment">/// particular implementation; it must read:</span>
+    <span class="doccomment">///     MARK yyyy = mmmm</span>
+    <span class="doccomment">/// Wthere yyyy is User-process data stream market, and mmmm</span>
+    <span class="doccomment">/// server&#39;s equivelent market (note the space between markers and &quot;=&quot;)</span>
+    <span class="kw">pub</span> <span class="kw">const</span> <span class="ident">RESTART_MARKER_REPLY</span>: <span class="ident">u32</span> <span class="op">=</span> <span class="number">110</span>;
+    <span class="doccomment">/// System status, or system help reply.</span>
+    <span class="kw">pub</span> <span class="kw">const</span> <span class="ident">SYSTEM_STATUS</span>: <span class="ident">u32</span> <span class="op">=</span> <span class="number">211</span>;
+    <span class="doccomment">/// Directory status.</span>
+    <span class="kw">pub</span> <span class="kw">const</span> <span class="ident">DIRECTORY_STATUS</span>: <span class="ident">u32</span> <span class="op">=</span> <span class="number">212</span>;
+    <span class="doccomment">/// File status.</span>
+    <span class="kw">pub</span> <span class="kw">const</span> <span class="ident">FILE_STATUS</span>: <span class="ident">u32</span> <span class="op">=</span> <span class="number">213</span>;
+    <span class="doccomment">/// Help message.</span>
+    <span class="doccomment">/// On how to use the server or the meaning of a particular</span>
+    <span class="doccomment">/// non-standard command. This reply is useful only to the</span>
+    <span class="doccomment">/// human user.</span>
+    <span class="kw">pub</span> <span class="kw">const</span> <span class="ident">HELP_MESSAGE</span>: <span class="ident">u32</span> <span class="op">=</span> <span class="number">214</span>;
+    <span class="doccomment">/// NAME system type.</span>
+    <span class="doccomment">/// Where NAME is an official system name from the list in the</span>
+    <span class="doccomment">/// Assigned Numbers document.</span>
+    <span class="kw">pub</span> <span class="kw">const</span> <span class="ident">SYSTEM_TYPE</span>: <span class="ident">u32</span> <span class="op">=</span> <span class="number">215</span>;
+    <span class="doccomment">/// Service ready in nnn minutes.</span>
+    <span class="kw">pub</span> <span class="kw">const</span> <span class="ident">READY_IN</span>: <span class="ident">u32</span> <span class="op">=</span> <span class="number">120</span>;
+    <span class="doccomment">/// Servuce ready for new user.</span>
+    <span class="kw">pub</span> <span class="kw">const</span> <span class="ident">SERVICE_READY</span>: <span class="ident">u32</span> <span class="op">=</span> <span class="number">220</span>;
+    <span class="doccomment">/// Service closing control connection.</span>
+    <span class="doccomment">/// Logged out if approperiate.</span>
+    <span class="kw">pub</span> <span class="kw">const</span> <span class="ident">SERVER_CLOSING_CONTROL</span>: <span class="ident">u32</span> <span class="op">=</span> <span class="number">221</span>;
+    <span class="doccomment">/// Service not available, closing control connection.</span>
+    <span class="doccomment">/// This may be a reply to any command if the service knows it</span>
+    <span class="doccomment">/// must shut down.</span>
+    <span class="kw">pub</span> <span class="kw">const</span> <span class="ident">SERVICE_NOT_AVAILABLE</span>: <span class="ident">u32</span> <span class="op">=</span> <span class="number">421</span>;
+    <span class="doccomment">/// Data connection already open; transfer starting.</span>
+    <span class="kw">pub</span> <span class="kw">const</span> <span class="ident">DATA_TRANSFER_STARTING</span>: <span class="ident">u32</span> <span class="op">=</span> <span class="number">125</span>;
+    <span class="doccomment">/// Data connection open; no transfer in progress.</span>
+    <span class="kw">pub</span> <span class="kw">const</span> <span class="ident">DATA_NOT_TRANSFERING</span>: <span class="ident">u32</span> <span class="op">=</span> <span class="number">225</span>;
+    <span class="doccomment">/// Can&#39;t open data connection.</span>
+    <span class="kw">pub</span> <span class="kw">const</span> <span class="ident">DATA_CANNOT_CONNECT</span>: <span class="ident">u32</span> <span class="op">=</span> <span class="number">425</span>;
+    <span class="doccomment">/// Closing data connection.</span>
+    <span class="doccomment">/// Requested file action successful (for example, file</span>
+    <span class="doccomment">/// transfer or file abort).</span>
+    <span class="kw">pub</span> <span class="kw">const</span> <span class="ident">DATA_CLOSING</span>: <span class="ident">u32</span> <span class="op">=</span> <span class="number">226</span>;
+    <span class="doccomment">/// Connection closed; transfer aborted.</span>
+    <span class="kw">pub</span> <span class="kw">const</span> <span class="ident">DATA_CLOSED_ABORTING</span>: <span class="ident">u32</span> <span class="op">=</span> <span class="number">426</span>;
+    <span class="doccomment">/// Entering Passive Mode (h1,h2,h3,h4,p1,p2).</span>
+    <span class="kw">pub</span> <span class="kw">const</span> <span class="ident">ENTERING_PASSIVE</span>: <span class="ident">u32</span> <span class="op">=</span> <span class="number">227</span>;
+    <span class="doccomment">/// User logged in, proceed.</span>
+    <span class="kw">pub</span> <span class="kw">const</span> <span class="ident">LOGGED_IN</span>: <span class="ident">u32</span> <span class="op">=</span> <span class="number">230</span>;
+    <span class="doccomment">/// Not logged in.</span>
+    <span class="kw">pub</span> <span class="kw">const</span> <span class="ident">NOT_LOGGED_IN</span>: <span class="ident">u32</span> <span class="op">=</span> <span class="number">530</span>;
+    <span class="doccomment">/// User name okay, need password.</span>
+    <span class="kw">pub</span> <span class="kw">const</span> <span class="ident">PASSWORD_NEEDED</span>: <span class="ident">u32</span> <span class="op">=</span> <span class="number">331</span>;
+    <span class="doccomment">/// Need account for login.</span>
+    <span class="kw">pub</span> <span class="kw">const</span> <span class="ident">ACCOUNT_REQUIRED_LOGIN</span>: <span class="ident">u32</span> <span class="op">=</span> <span class="number">332</span>;
+    <span class="doccomment">/// Need account for storing files.</span>
+    <span class="kw">pub</span> <span class="kw">const</span> <span class="ident">ACCOUNT_REQUIRED_STORING</span>: <span class="ident">u32</span> <span class="op">=</span> <span class="number">532</span>;
+    <span class="doccomment">/// File status okay; about to open the data connection.</span>
+    <span class="kw">pub</span> <span class="kw">const</span> <span class="ident">FILE_OPENING_DATA</span>: <span class="ident">u32</span> <span class="op">=</span> <span class="number">150</span>;
+    <span class="doccomment">/// Requested file action okay, completed.</span>
+    <span class="kw">pub</span> <span class="kw">const</span> <span class="ident">FILE_ACTION_COMPLETE</span>: <span class="ident">u32</span> <span class="op">=</span> <span class="number">250</span>;
+    <span class="doccomment">/// &quot;PATHNAME&quot; created.</span>
+    <span class="kw">pub</span> <span class="kw">const</span> <span class="ident">DIRECTORY_CREATED</span>: <span class="ident">u32</span> <span class="op">=</span> <span class="number">257</span>;
+    <span class="doccomment">/// Requested file action pending further information.</span>
+    <span class="kw">pub</span> <span class="kw">const</span> <span class="ident">FILE_NEED_INFORMATION</span>: <span class="ident">u32</span> <span class="op">=</span> <span class="number">350</span>;
+    <span class="doccomment">/// File action not taken.</span>
+    <span class="doccomment">/// File unavailable (e.g., file busy)</span>
+    <span class="kw">pub</span> <span class="kw">const</span> <span class="ident">FILE_ACTION_NOT_TAKEN</span>: <span class="ident">u32</span> <span class="op">=</span> <span class="number">450</span>;
+    <span class="doccomment">/// Requested action not taken.</span>
+    <span class="doccomment">/// File unavailable (e.g., file not found, no access).</span>
+    <span class="kw">pub</span> <span class="kw">const</span> <span class="ident">ACTION_NOT_TAKEN</span>: <span class="ident">u32</span> <span class="op">=</span> <span class="number">550</span>;
+    <span class="doccomment">/// Requested action aborted. Local error in processing.</span>
+    <span class="kw">pub</span> <span class="kw">const</span> <span class="ident">ACTION_ABORTED_PROCESSING</span>: <span class="ident">u32</span> <span class="op">=</span> <span class="number">451</span>;
+    <span class="doccomment">/// Requested action aborted. Page type unknown.</span>
+    <span class="kw">pub</span> <span class="kw">const</span> <span class="ident">ACTION_ABORTED_UNKOWN_PAGE</span>: <span class="ident">u32</span> <span class="op">=</span> <span class="number">551</span>;
+    <span class="doccomment">/// Requested action not taken.</span>
+    <span class="doccomment">/// Insufficient storage space in system.</span>
+    <span class="kw">pub</span> <span class="kw">const</span> <span class="ident">INSUFFICIENT_STORAGE</span>: <span class="ident">u32</span> <span class="op">=</span> <span class="number">452</span>;
+    <span class="doccomment">/// Requested file action aborted.</span>
+    <span class="doccomment">/// Exceeded storage allocation (for current directory or</span>
+    <span class="doccomment">/// dataset).</span>
+    <span class="kw">pub</span> <span class="kw">const</span> <span class="ident">INSUFFICIENT_ALLOCATED_STORAGE</span>: <span class="ident">u32</span> <span class="op">=</span> <span class="number">552</span>;
+    <span class="doccomment">/// Requsted action not taken.</span>
+    <span class="doccomment">/// File name not allowed.</span>
+    <span class="kw">pub</span> <span class="kw">const</span> <span class="ident">FILE_NAME_INVALID</span>: <span class="ident">u32</span> <span class="op">=</span> <span class="number">553</span>;
+}
+</pre></div>
+</section><section id="search" class="content hidden"></section><section class="footer"></section><script>window.rootPath = "../../";window.currentCrate = "ftp_lib";</script><script src="../../aliases.js"></script><script src="../../main.js"></script><script src="../../source-script.js"></script><script src="../../source-files.js"></script><script defer src="../../search-index.js"></script></body></html>

@@ -1,0 +1,1 @@
+initSidebarItems({"enum":[["FtpError","Enum containing all FTP errors the library uses"]]});
